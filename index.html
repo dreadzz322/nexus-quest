@@ -132,6 +132,8 @@ var accessLevel = "guest"; // уровень доступа текущего п�
 const TOTAL = 10;
 const SAVE = "nexus_quest_v1";
 const $ = (id) => document.getElementById(id);
+// регистр, пробелы, _ - и . в ответах не важны: "Secret Key" = "secret_key"
+const normalize = (s) => s.trim().toLowerCase().replace(/[\s_.-]+/g, "");
 const S = (s) => atob(s).split("").reverse().join("");
 const hash = (str, seed = 7) => {
   let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
@@ -163,7 +165,7 @@ const LEVELS = [
     story: "Разработчики NEXUS торопились к релизу. Говорят, они оставили что-то прямо в коде страницы.",
     task: "Найди пароль администратора, спрятанный в исходном коде этой страницы.",
     body: () => `<div class="box">Вход в систему NEXUS<br>Пользователь: <b>admin</b><br>Пароль: ********</div>`,
-    hash: 3353811150975718,
+    hash: 1526366071773769,
     hints: [
       "Браузер может показать «сырой» код любой страницы — то, что прислал сервер.",
       "Нажми <kbd>Ctrl</kbd> + <kbd>U</kbd> (или правая кнопка мыши → «Просмотр кода страницы»). Ищи комментарии: они начинаются с <code>&lt;!--</code>.",
@@ -193,7 +195,7 @@ const LEVELS = [
       console.log("%c[NEXUS DEBUG] временный ключ: " + S("cmV0c2FtX2Vsb3Nub2M="), "color:#ffcc4d;font-size:14px");
       console.log("%c[NEXUS DEBUG] не забыть отключить отладку!!!", "color:#ff5c6c");
     },
-    hash: 2746335530492537,
+    hash: 5853306669973211,
     hints: [
       "Нажми <kbd>F12</kbd> (или <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>I</kbd>) и открой вкладку <b>Console</b> («Консоль»).",
       "Если консоль пустая — оставь её открытой и обнови страницу (<kbd>F5</kbd>). Прогресс сохранится.",
@@ -212,7 +214,7 @@ const LEVELS = [
         out.innerHTML = `Ключ выдан: <b class="big">${S("c2tjb2xfZXJvbV9vbg==")}</b>`;
       });
     },
-    hash: 8481772450829537,
+    hash: 3034572514769086,
     hints: [
       "Нажми <kbd>F12</kbd> и открой вкладку <b>Elements</b> («Элементы»). Значок стрелки в левом верхнем углу позволяет кликнуть по кнопке и сразу найти её в коде.",
       "У кнопки есть атрибут <code>disabled</code>. Дважды кликни по нему в Elements и удали (или выдели и нажми <kbd>Delete</kbd>).",
@@ -247,7 +249,7 @@ const LEVELS = [
     story: "В базе NEXUS нашлось поле с непонятной строкой. Знаки «==» в конце выдают формат кодировки.",
     task: "Раскодируй строку.",
     body: () => `<pre class="big center">c2VjcmV0X2tleQ==</pre>`,
-    hash: 8804346188270971,
+    hash: 8156202058113928,
     hints: [
       "Это кодировка <b>Base64</b>. Ей кодируют картинки, письма и много чего ещё.",
       "Открой консоль (<kbd>F12</kbd> → Console) и введи: <code>atob('c2VjcmV0X2tleQ==')</code>, затем <kbd>Enter</kbd>.",
@@ -277,7 +279,7 @@ const LEVELS = [
       const key = S("cmV0bnVoX2VnYXJvdHM=");
       if (!store.set("nexus_backup_key", key)) window.nexus_backup_key = key;
     },
-    hash: 7141298344891822,
+    hash: 6035360265542048,
     hints: [
       "Нажми <kbd>F12</kbd> и найди вкладку <b>Application</b> («Приложение»). Если её не видно — нажми <b>»</b> в ряду вкладок.",
       "Слева: Storage → <b>Local Storage</b> → адрес этой страницы. Ищи запись <code>nexus_backup_key</code>. Или в консоли: <code>localStorage.getItem('nexus_backup_key')</code>.",
@@ -380,7 +382,7 @@ function showLevel() {
   if (!L.noInput) {
     $("ansForm").addEventListener("submit", (e) => {
       e.preventDefault();
-      const v = $("ansIn").value.trim().toLowerCase();
+      const v = normalize($("ansIn").value);
       if (!v) return;
       if (hash(v) === L.hash) success(); else fail("ДОСТУП ЗАПРЕЩЁН: неверный ключ");
     });
