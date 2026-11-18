@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEXUS: физический движок</title>
+<style>
+  :root {
+    --bg: #070b08;
+    --panel: #0d1510;
+    --line: #1d3324;
+    --text: #c8f5d2;
+    --dim: #7fa98a;
+    --accent: #39ff7a;
+    --warn: #ffcc4d;
+    --danger: #ff5c6c;
+    --mono: "Cascadia Code", "Consolas", "JetBrains Mono", "Roboto Mono", "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--mono);
+    font-size: 16px; line-height: 1.55; min-height: 100vh;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(57,255,122,.03) 0 1px, transparent 1px 3px);
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 16px 16px 40px; }
+  header { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+  .logo { color: var(--accent); font-weight: 700; letter-spacing: .12em; }
+  .logo small { color: var(--dim); font-weight: 400; letter-spacing: .02em; }
+  .stats { display: flex; gap: 12px; color: var(--dim); font-size: 14px; }
+  .stats b { color: var(--text); }
+  .progress { display: flex; gap: 4px; margin-bottom: 16px; }
+  .progress span { flex: 1; height: 6px; background: var(--line); border-radius: 2px; }
+  .progress span.done { background: var(--accent); box-shadow: 0 0 8px rgba(57,255,122,.5); }
+  .progress span.now { background: var(--warn); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; }
+  .tag { color: var(--warn); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; }
+  h1, h2 { margin: 4px 0 12px; line-height: 1.25; color: var(--accent); }
+  h1 { font-size: 26px; } h2 { font-size: 22px; }
+  p { margin: 0 0 12px; }
+  .dim { color: var(--dim); }
+  .task { border-left: 3px solid var(--accent); padding: 8px 12px; margin: 14px 0; background: rgba(57,255,122,.05); }
+  pre {
+    background: #040705; border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px 14px; overflow-x: auto; margin: 0 0 14px; font-family: var(--mono); font-size: 15px;
+  }
+  .kw { color: #ff9ff3; } .num { color: var(--warn); } .fn { color: #7ad7ff; } .cm { color: var(--dim); }
+  canvas.sim { display: block; width: 100%; background: #040705; border: 1px solid var(--line); border-radius: 6px; margin: 4px 0 10px; touch-action: manipulation; }
+  .readout { font-size: 15px; color: var(--warn); min-height: 1.5em; margin-bottom: 8px; }
+  .ctrl { margin: 10px 0; }
+  .ctrl label { display: block; margin-bottom: 4px; }
+  .ctrl label b { color: var(--accent); }
+  input[type=range] { width: 100%; accent-color: var(--accent); height: 28px; }
+  form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+  .ans { display: flex; flex: 1 1 200px; min-width: 0; align-items: center; gap: 8px; }
+  input[type=text] {
+    flex: 1; min-width: 0; background: #040705; color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; padding: 13px 14px; font: inherit; font-size: 17px; outline: none;
+  }
+  input[type=text]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(57,255,122,.15); }
+  .unit { color: var(--dim); white-space: nowrap; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 6px; padding: 13px 18px;
+    border: 1px solid var(--accent); background: var(--accent); color: #031006; font-weight: 700;
+  }
+  button.ghost { background: transparent; color: var(--dim); border-color: var(--line); font-weight: 400; }
+  button.ghost.armed { color: var(--danger); border-color: var(--danger); }
+  button.alt { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .msg { min-height: 1.6em; margin-top: 12px; font-weight: 700; }
+  .msg.ok { color: var(--accent); }
+  .msg.bad { color: var(--danger); }
+  .note { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 6px; background: rgba(57,255,122,.06); }
+  .hint { margin-top: 12px; padding: 12px 14px; border: 1px dashed var(--warn); border-radius: 6px; color: var(--warn); }
+  .hint p:last-child { margin-bottom: 0; }
+  .shake { animation: shake .35s; }
+  @keyframes shake { 20%,60% { transform: translateX(-6px); } 40%,80% { transform: translateX(6px); } }
+  .result { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 16px 0; }
+  .result div { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+  .result small { display: block; color: var(--dim); font-size: 13px; }
+  .result b { font-size: 19px; color: var(--accent); }
+  footer { margin-top: 24px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--dim); font-size: 13px; }
+  footer button { padding: 6px 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">NEXUS<small> // физический движок</small></div>
+    <div class="stats">
+      <span>агент: <b id="who">—</b></span>
+      <span><b id="timer">00:00</b></span>
+      <span>подсказки: <b id="hints">0</b></span>
+    </div>
+  </header>
+  <div class="progress" id="progress"></div>
+  <main class="card" id="screen"></main>
+  <footer>
+    <span>Везде g = 10 м/с². Сопротивления воздуха нет.</span>
+    <button class="ghost" id="reset" type="button">начать заново</button>
+  </footer>
+</div>
+
+<script>
+// ===================== служебное =====================
+const TOTAL = 10;
+const G = 10; // ускорение свободного падения, м/с²
+const SAVE = "nexus_physics_v1";
+const $ = (id) => document.getElementById(id);
+const C = { bg: "#040705", line: "#1d3324", grid: "#13241a", text: "#c8f5d2", dim: "#7fa98a", acc: "#39ff7a", warn: "#ffcc4d", danger: "#ff5c6c", blue: "#7ad7ff" };
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const fmtNum = (x, d = 2) => (Math.round(x * 10 ** d) / 10 ** d).toString().replace(".", ",");
+const store = {
+  get() { try { return JSON.parse(localStorage.getItem(SAVE)); } catch (e) { return null; } },
+  set(v) { try { localStorage.setItem(SAVE, JSON.stringify(v)); } catch (e) {} },
+  del() { try { localStorage.removeItem(SAVE); } catch (e) {} },
+};
+
+// Наборы данных для уровней: каждому студенту выпадает свой вариант, чтобы не списывали.
+const CARTS = [[2, 3, 1], [3, 4, 1], [1, 6, 2]];            // m1, v1, m2 -> скорость после сцепки
+const SLOPES = [[0.36, 20], [0.58, 30], [0.7, 35]];          // коэффициент трения, угол начала скольжения
+const SEESAW = [[30, 2, 20, 3], [40, 1.5, 20, 3], [20, 3, 30, 2], [45, 2, 30, 3]]; // m1, d1, m2, ответ d2
+
+function newParams() {
+  return { v1: pick([20, 25]), d4: pick([20, 35]), m5: pick([4, 5]), c6: pick([0, 1, 2]), h7: pick([5, 20, 45]), s8: pick([0, 1, 2]), s9: pick([0, 1, 2, 3]) };
+}
+const blank = () => ({ name: "", level: 0, start: 0, end: 0, hints: 0, hinted: {}, p: newParams() });
+let state = store.get();
+if (!state || !state.p) state = blank();
+const save = () => store.set(state);
+
+// Разбор числа: принимает «2,5», «2.5», «20 м/с».
+function parseNum(s) {
+  const m = String(s).replace(",", ".").match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : NaN;
+}
+
+function el(tag, attrs = {}, html) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (html != null) e.innerHTML = html;
+  return e;
+}
+
+// ---------- холст и анимация ----------
+function makeCanvas(box, aspect, maxH = 340) {
+  const c = el("canvas", { class: "sim" });
+  box.appendChild(c);
+  const W = c.clientWidth || 320;
+  const H = Math.min(maxH, Math.round(W * aspect));
+  const dpr = window.devicePixelRatio || 1;
+  c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); c.style.height = H + "px";
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const clear = () => { ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H); };
+  return { c, ctx, W, H, clear };
+}
+let animId = null;
+function animate(fn) {
+  cancelAnimationFrame(animId);
+  const t0 = performance.now();
+  let last = t0;
+  const step = (now) => {
+    const t = (now - t0) / 1000, dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (fn(t, dt) !== false) animId = requestAnimationFrame(step);
+  };
+  animId = requestAnimationFrame(step);
+}
+const stopAnim = () => cancelAnimationFrame(animId);
+let cleanups = [];
+const onLeave = (f) => cleanups.push(f);
+
+function text(ctx, s, x, y, color = C.dim, align = "left", size = 12) {
+  ctx.fillStyle = color; ctx.font = `${size}px Consolas, monospace`; ctx.textAlign = align; ctx.fillText(s, x, y);
+}
+function arrow(ctx, x1, y1, x2, y2, color) {
+  const a = Math.atan2(y2 - y1, x2 - x1);
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 8 * Math.cos(a - 0.4), y2 - 8 * Math.sin(a - 0.4));
+  ctx.lineTo(x2 - 8 * Math.cos(a + 0.4), y2 - 8 * Math.sin(a + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+function slider(box, { label, min, max, step, value, unit, fmt }) {
+  const wrap = el("div", { class: "ctrl" });
+  const lab = el("label");
+  const inp = el("input", { type: "range", min, max, step, value });
+  const show = () => (lab.innerHTML = `${label}: <b>${fmt ? fmt(+inp.value) : fmtNum(+inp.value)} ${unit}</b>`);
+  inp.addEventListener("input", show);
+  show();
+  wrap.append(lab, inp);
+  box.appendChild(wrap);
+  return inp;
+}
+function button(box, label, cls = "") {
+  let row = box.lastElementChild && box.lastElementChild.classList.contains("row") ? box.lastElementChild : null;
+  if (!row) { row = el("div", { class: "row" }); box.appendChild(row); }
+  const b = el("button", { type: "button", class: cls }, label);
+  row.appendChild(b);
+  return b;
+}
+// Поле ответа: check(x) возвращает true, false или текст ошибки.
+function answerForm(box, api, { placeholder, unit, check }) {
+  const f = el("form", { autocomplete: "off" });
+  f.innerHTML = `<div class="ans"><input type="text" inputmode="decimal" placeholder="${placeholder}" aria-label="${placeholder}"><span class="unit">${unit}</span></div><button type="submit">Проверить</button>`;
+  const inp = f.querySelector("input");
+  f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const x = parseNum(inp.value);
+    if (isNaN(x)) return api.fail("Введи число.");
+    const r = check(x);
+    if (r === true) api.success();
+    else api.fail(typeof r === "string" ? r : "Неверно. Попробуй ещё раз.");
+  });
+  box.appendChild(f);
+}
+
+// ===================== уровни =====================
+const LEVELS = [
+  // 1 ----------------------------------------------------------
+  {
+    title: "Модуль скорости",
+    story: "Игровая студия NEXUS делает гоночную игру, и её физический движок сломался. Ты — тестировщик. Первым делом проверим спидометр.",
+    task: () => "Запусти машинку и засеки, за сколько она проезжает 100 метров. Какая у неё скорость?",
+    hints: ["Скорость — это путь, делённый на время: v = s / t.", "Путь 100 м. Время смотри на секундомере после финиша, раздели одно на другое."],
+    render(box, api) {
+      const v = state.p.v1, L = 100;
+      const s = makeCanvas(box, 0.36, 200);
+      const x0 = 50, x1 = s.W - 24, gy = s.H - 34;
+      const draw = (d) => {
+        s.clear();
+        const { ctx } = s;
+        ctx.strokeStyle = C.line; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, gy + 12); ctx.lineTo(s.W, gy + 12); ctx.stroke();
+        for (let i = 0; i <= 10; i++) { const x = x0 + (x1 - x0) * i / 10; ctx.fillStyle = C.grid; ctx.fillRect(x - 1, gy + 14, 2, 6); }
+        ctx.fillStyle = C.warn; ctx.fillRect(x0 - 1, gy - 36, 2, 50); ctx.fillRect(x1 - 1, gy - 36, 2, 50);
+        text(ctx, "0 м", x0, gy + 32, C.dim, "center");
+        text(ctx, "100 м", x1, gy + 32, C.dim, "center");
+        const cx = x0 + (x1 - x0) * Math.min(1, d / L);
+        ctx.fillStyle = C.acc; ctx.fillRect(cx - 36, gy - 14, 36, 14); ctx.fillRect(cx - 28, gy - 24, 18, 10);
+        ctx.fillStyle = C.text; ctx.beginPath(); ctx.arc(cx - 28, gy + 2, 5, 0, 7); ctx.arc(cx - 8, gy + 2, 5, 0, 7); ctx.fill();
+      };
+      draw(0);
+      const ro = el("div", { class: "readout" }, "секундомер: 0,00 с");
+      box.appendChild(ro);
+      const b = button(box, "Старт");
+      b.onclick = () => {
+        b.disabled = true;
+        const T = L / v;
+        animate((t) => {
+          const tt = Math.min(t, T);
+          draw(v * tt);
+          ro.textContent = "секундомер: " + tt.toFixed(2).replace(".", ",") + " с";
+          if (t >= T) { b.disabled = false; b.textContent = "Ещё раз"; return false; }
+        });
+      };
+      answerForm(box, api, { placeholder: "Скорость", unit: "м/с", check: (x) => Math.abs(x - v) <= 0.5 });
+    },
+  },
+  // 2 ----------------------------------------------------------
+  {
+    title: "Ловушка средней скорости",
+    story: "В игре есть курьер. Движок показывает его среднюю скорость, но игроки жалуются, что цифра неправильная.",
+    task: () => "Курьер проехал первую половину пути со скоростью 30 км/ч, а вторую половину — со скоростью 60 км/ч. Какая у него средняя скорость на всём пути?",
+    hints: ["Средняя скорость — это весь путь, делённый на всё время. Это не среднее арифметическое скоростей!", "Пусть весь путь 120 км. Посчитай, сколько часов курьер ехал первые 60 км и сколько — вторые 60 км."],
+    render(box, api) {
+      box.appendChild(el("pre", {}, `<span class="cm">// так считает сломанный движок</span>\nv_ср = (<span class="num">30</span> + <span class="num">60</span>) / <span class="num">2</span>   <span class="cm">// = 45 ???</span>`));
+      answerForm(box, api, {
+        placeholder: "Средняя скорость", unit: "км/ч",
+        check: (x) => Math.abs(x - 40) <= 0.5 ? true
+          : Math.abs(x - 45) <= 0.5 ? "45 — это и есть баг движка! Подумай, на какой половине пути курьер провёл больше времени." : false,
+      });
+    },
+  },
+  // 3 ----------------------------------------------------------
+  {
+    title: "Сброс груза",
+    story: "Дрон в игре сбрасывает посылки. По сценарию посылка должна падать ровно 3 секунды — под это подогнана музыка.",
+    task: () => "Подбери высоту дрона так, чтобы груз падал ровно 3,00 секунды. Нажми «Сбросить груз», чтобы проверить.",
+    hints: ["При свободном падении без начальной скорости высота h = g·t² / 2.", "g = 10 м/с², t = 3 с. Подставь в формулу h = g·t² / 2."],
+    render(box, api) {
+      const s = makeCanvas(box, 1, 330);
+      const top = 26, gy = s.H - 22, ppm = (gy - top) / 100, x = s.W * 0.6;
+      const hIn = slider(box, { label: "Высота дрона", min: 5, max: 100, step: 5, value: 20, unit: "м" });
+      const draw = (h, y) => {
+        s.clear();
+        const { ctx } = s;
+        for (let m = 0; m <= 100; m += 20) {
+          const yy = gy - m * ppm;
+          ctx.fillStyle = C.grid; ctx.fillRect(40, yy, s.W - 50, 1);
+          text(ctx, m + " м", 34, yy + 4, C.dim, "right");
+        }
+        ctx.fillStyle = C.line; ctx.fillRect(0, gy, s.W, 3);
+        const dy = gy - h * ppm;
+        ctx.fillStyle = C.text; ctx.fillRect(x - 18, dy - 12, 36, 7);
+        ctx.strokeStyle = C.text; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x - 26, dy - 16); ctx.lineTo(x - 10, dy - 16); ctx.moveTo(x + 10, dy - 16); ctx.lineTo(x + 26, dy - 16); ctx.stroke();
+        const by = gy - y * ppm;
+        ctx.fillStyle = C.warn; ctx.fillRect(x - 7, by - 4, 14, 12);
+      };
+      draw(+hIn.value, +hIn.value);
+      hIn.addEventListener("input", () => { stopAnim(); draw(+hIn.value, +hIn.value); ro.textContent = "время падения: —"; });
+      const ro = el("div", { class: "readout" }, "время падения: —");
+      box.appendChild(ro);
+      const b = button(box, "Сбросить груз");
+      b.onclick = () => {
+        const h = +hIn.value, T = Math.sqrt((2 * h) / G);
+        b.disabled = hIn.disabled = true;
+        animate((t) => {
+          const tt = Math.min(t, T);
+          draw(h, Math.max(0, h - (G * tt * tt) / 2));
+          ro.textContent = "время падения: " + tt.toFixed(2).replace(".", ",") + " с";
+          if (t >= T) {
+            b.disabled = hIn.disabled = false;
+            if (h === 45) api.success("Ровно 3 секунды: h = 10 · 3² / 2 = 45 м.");
+            else api.fail(`Груз падал ${fmtNum(T)} с, а нужно 3,00 с.`);
+            return false;
+          }
+        });
+      };
+    },
+  },
+  // 4 ----------------------------------------------------------
+  {
+    title: "Катапульта",
+    story: "В игре есть катапульта. Она всегда стреляет со скоростью 20 м/с, а игрок выбирает только угол.",
+    task: () => `Цель стоит в ${state.p.d4} метрах. Подбери угол броска, чтобы попасть в неё.`,
+    hints: ["Дальность полёта: L = v² · sin(2α) / g. Скорость v = 20 м/с.", `Нужно sin(2α) = L·g / v² = ${state.p.d4}·10 / 400. Найди угол 2α, у которого такой синус, и раздели на 2.`],
+    render(box, api) {
+      const D = state.p.d4, v0 = 20;
+      const s = makeCanvas(box, 0.56, 260);
+      const ox = 24, gy = s.H - 26, sx = (s.W - ox - 14) / 42, sy = (gy - 12) / 22;
+      const P = (x, y) => [ox + x * sx, gy - y * sy];
+      const aIn = slider(box, { label: "Угол броска", min: 5, max: 85, step: 5, value: 45, unit: "°" });
+      let trail = [];
+      const draw = (ball) => {
+        s.clear();
+        const { ctx } = s;
+        ctx.fillStyle = C.line; ctx.fillRect(0, gy, s.W, 3);
+        for (let m = 0; m <= 40; m += 10) { const [x] = P(m, 0); text(ctx, m + " м", x, gy + 18, C.dim, "center"); ctx.fillStyle = C.grid; ctx.fillRect(x, gy - 4, 1, 4); }
+        const [tx] = P(D - 1, 0), [tx2] = P(D + 1, 0);
+        ctx.fillStyle = C.danger; ctx.fillRect(tx, gy - 16, tx2 - tx, 16);
+        ctx.fillRect(tx + (tx2 - tx) / 2 - 1, gy - 34, 2, 18);
+        ctx.beginPath(); ctx.moveTo(tx + (tx2 - tx) / 2 + 1, gy - 34); ctx.lineTo(tx + (tx2 - tx) / 2 + 13, gy - 29); ctx.lineTo(tx + (tx2 - tx) / 2 + 1, gy - 24); ctx.fill();
+        const a = (+aIn.value * Math.PI) / 180;
+        ctx.strokeStyle = C.warn; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(ox, gy); ctx.lineTo(ox + 30 * Math.cos(a), gy - 30 * Math.sin(a)); ctx.stroke();
+        if (trail.length) {
+          ctx.strokeStyle = C.dim; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+          ctx.beginPath(); trail.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); ctx.setLineDash([]);
+        }
+        if (ball) { ctx.fillStyle = C.acc; ctx.beginPath(); ctx.arc(ball[0], ball[1], 6, 0, 7); ctx.fill(); }
+      };
+      draw();
+      aIn.addEventListener("input", () => { stopAnim(); trail = []; draw(); });
+      const b = button(box, "Огонь!");
+      b.onclick = () => {
+        const a = (+aIn.value * Math.PI) / 180, T = (2 * v0 * Math.sin(a)) / G;
+        trail = []; b.disabled = aIn.disabled = true;
+        animate((t) => {
+          const tt = Math.min(t * 1.6, T);
+          const p = P(v0 * Math.cos(a) * tt, v0 * Math.sin(a) * tt - (G * tt * tt) / 2);
+          trail.push(p); draw(p);
+          if (tt >= T) {
+            b.disabled = aIn.disabled = false;
+            const R = (v0 * v0 * Math.sin(2 * a)) / G, deg = +aIn.value;
+            if (Math.abs(R - D) <= 1) api.success(`Попадание! Кстати, угол ${90 - deg}° тоже попадает: у углов α и 90° − α дальность одинаковая.`);
+            else api.fail(`${R < D ? "Недолёт" : "Перелёт"} на ${fmtNum(Math.abs(R - D), 1)} м.`);
+            return false;
+          }
+        });
+      };
+    },
+  },
+  // 5 ----------------------------------------------------------
+  {
+    title: "Толкни ящик",
+    story: "Игрок толкает ящик по полу. Движок должен учитывать трение, иначе ящики скользят как по льду.",
+    task: () => `Ящик массой ${state.p.m5} кг, коэффициент трения 0,2. С какой силой толкать, чтобы ящик разгонялся с ускорением 2 м/с²? Подбери силу и толкни.`,
+    hints: ["Сила толчка должна и разгонять ящик (m·a), и побеждать трение (μ·m·g).", `F = m·a + μ·m·g = ${state.p.m5}·2 + 0,2·${state.p.m5}·10.`],
+    render(box, api) {
+      const m = state.p.m5, mu = 0.2, fr = mu * m * G;
+      const s = makeCanvas(box, 0.4, 200);
+      const gy = s.H - 30, x0 = 30, sx = (s.W - 90) / 16;
+      const fIn = slider(box, { label: "Сила толчка", min: 0, max: 50, step: 1, value: 10, unit: "Н" });
+      const draw = (x, F) => {
+        s.clear();
+        const { ctx } = s;
+        ctx.fillStyle = C.line; ctx.fillRect(0, gy, s.W, 3);
+        for (let i = 0; i < s.W; i += 14) { ctx.fillStyle = C.grid; ctx.fillRect(i, gy + 5, 7, 2); }
+        const bx = x0 + x * sx;
+        ctx.fillStyle = C.warn; ctx.fillRect(bx, gy - 36, 40, 36);
+        text(ctx, m + " кг", bx + 20, gy - 14, "#031006", "center", 12);
+        if (F > 0) arrow(ctx, bx - 4 - Math.min(60, F * 2) + 0, gy - 18, bx - 2, gy - 18, C.acc);
+        const f = Math.min(F, fr);
+        if (f > 0) arrow(ctx, bx + 40 + Math.min(60, f * 2), gy + 14, bx + 42, gy + 14, C.danger);
+        text(ctx, "F", Math.max(4, bx - 14), gy - 26, C.acc);
+        text(ctx, "трение", bx + 46, gy + 26, C.danger);
+      };
+      draw(0, +fIn.value);
+      fIn.addEventListener("input", () => { stopAnim(); draw(0, +fIn.value); ro.textContent = "ускорение: —"; });
+      const ro = el("div", { class: "readout" }, "ускорение: —");
+      box.appendChild(ro);
+      const b = button(box, "Толкнуть");
+      b.onclick = () => {
+        const F = +fIn.value, a = F > fr ? (F - fr) / m : 0;
+        b.disabled = fIn.disabled = true;
+        animate((t) => {
+          const tt = Math.min(t, 2);
+          draw(Math.min(16, (a * tt * tt) / 2), F);
+          if (t >= 2) {
+            b.disabled = fIn.disabled = false;
+            ro.textContent = "ускорение: " + fmtNum(a) + " м/с²";
+            if (a === 0) api.fail("Ящик не сдвинулся: сила толчка не победила трение.");
+            else if (Math.abs(a - 2) < 0.01) api.success(`Ускорение ровно 2 м/с². F = ${m}·2 + 0,2·${m}·10 = ${F} Н.`);
+            else api.fail(`Ускорение ${fmtNum(a)} м/с², а нужно 2 м/с².`);
+            return false;
+          }
+        });
+      };
+    },
+  },
+  // 6 ----------------------------------------------------------
+  {
+    title: "Столкновение",
+    story: "В игре тележки сцепляются при ударе. После столкновения движок выдаёт им случайную скорость. Надо починить.",
+    task: () => { const [m1, v1, m2] = CARTS[state.p.c6]; return `Тележка ${m1} кг едет со скоростью ${v1} м/с и врезается в стоящую тележку ${m2} кг. Они сцепляются и едут вместе. С какой скоростью?`; },
+    hints: ["Импульс до удара равен импульсу после удара: p = m·v.", "m1·v1 = (m1 + m2)·v. Отсюда v = m1·v1 / (m1 + m2)."],
+    render(box, api) {
+      const [m1, v1, m2] = CARTS[state.p.c6], v = (m1 * v1) / (m1 + m2);
+      const s = makeCanvas(box, 0.36, 190);
+      const gy = s.H - 30, w1 = 26 + 8 * m1, w2 = 26 + 8 * m2, ppm = 26;
+      const draw = (x1, x2, after) => {
+        s.clear();
+        const { ctx } = s;
+        ctx.fillStyle = C.line; ctx.fillRect(0, gy + 8, s.W, 3);
+        const cart = (x, w, col, label) => {
+          ctx.fillStyle = col; ctx.fillRect(x, gy - 24, w, 24);
+          ctx.fillStyle = C.text; ctx.beginPath(); ctx.arc(x + 8, gy + 3, 5, 0, 7); ctx.arc(x + w - 8, gy + 3, 5, 0, 7); ctx.fill();
+          text(ctx, label, x + w / 2, gy - 8, "#031006", "center");
+        };
+        cart(x1, w1, C.acc, m1 + " кг");
+        cart(x2, w2, C.warn, m2 + " кг");
+        if (!after) { arrow(ctx, x1 + w1 / 2 - 20, gy - 40, x1 + w1 / 2 + 20, gy - 40, C.acc); text(ctx, v1 + " м/с", x1 + w1 / 2, gy - 48, C.acc, "center"); }
+        else { arrow(ctx, x1 + w1 - 20, gy - 40, x1 + w1 + 20, gy - 40, C.text); text(ctx, "? м/с", x1 + w1, gy - 48, C.text, "center"); }
+      };
+      const sx1 = 10, sx2 = s.W * 0.55;
+      draw(sx1, sx2, false);
+      const b = button(box, "Запустить");
+      b.onclick = () => {
+        b.disabled = true;
+        const tHit = (sx2 - sx1 - w1) / (v1 * ppm);
+        animate((t) => {
+          let x1;
+          if (t < tHit) { x1 = sx1 + v1 * ppm * t; draw(x1, sx2, false); }
+          else { x1 = sx2 - w1 + v * ppm * (t - tHit); draw(x1, x1 + w1, true); }
+          if (x1 > s.W + 10 || t > tHit + 6) { b.disabled = false; b.textContent = "Ещё раз"; draw(sx1, sx2, false); return false; }
+        });
+      };
+      answerForm(box, api, { placeholder: "Скорость после удара", unit: "м/с", check: (x) => Math.abs(x - v) <= 0.05 });
+    },
+  },
+  // 7 ----------------------------------------------------------
+  {
+    title: "Американские горки",
+    story: "В игре есть горка. Шарик скатывается без трения, а движок должен показать скорость внизу.",
+    task: () => `Шарик отпускают с высоты ${state.p.h7} м. С какой скоростью он пролетит самый низ горки?`,
+    hints: ["Потенциальная энергия наверху превращается в кинетическую внизу: m·g·h = m·v² / 2. Масса сокращается!", `v = √(2·g·h) = √(2·10·${state.p.h7}).`],
+    render(box, api) {
+      const hM = state.p.h7, v = Math.sqrt(2 * G * hM);
+      const s = makeCanvas(box, 0.55, 240);
+      const top = 22, gy = s.H - 26, x0 = 30, x1 = s.W - 20;
+      const yN = (u) => (u >= 1 ? 0 : (1 + Math.cos(Math.PI * u)) / 2);
+      const P = (u) => [x0 + (u / 1.5) * (x1 - x0), gy - yN(u) * (gy - top)];
+      const draw = (u) => {
+        s.clear();
+        const { ctx } = s;
+        ctx.strokeStyle = C.text; ctx.lineWidth = 3; ctx.beginPath();
+        for (let i = 0; i <= 150; i++) { const [x, y] = P(i / 100); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+        ctx.stroke();
+        ctx.strokeStyle = C.dim; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(14, top); ctx.lineTo(14, gy); ctx.stroke(); ctx.setLineDash([]);
+        text(ctx, "h = " + hM + " м", 20, (top + gy) / 2, C.warn);
+        const [bx, by] = P(1);
+        text(ctx, "v = ?", bx, by + 18, C.acc, "center");
+        if (u != null) { const [x, y] = P(u); ctx.fillStyle = C.acc; ctx.beginPath(); ctx.arc(x, y - 7, 7, 0, 7); ctx.fill(); }
+      };
+      draw(0);
+      const b = button(box, "Отпустить шарик");
+      b.onclick = () => {
+        b.disabled = true;
+        let u = 0;
+        animate((t, dt) => {
+          const k = 0.9 * Math.sqrt(1 - yN(u) + 0.03);
+          u += k * dt;
+          draw(Math.min(u, 1.5));
+          if (u >= 1.5) { b.disabled = false; b.textContent = "Ещё раз"; return false; }
+        });
+      };
+      answerForm(box, api, { placeholder: "Скорость внизу", unit: "м/с", check: (x) => Math.abs(x - v) <= 0.5 });
+    },
+  },
+  // 8 ----------------------------------------------------------
+  {
+    title: "Наклони телефон",
+    story: "Брусок лежит на доске. Пока доска почти ровная, трение его держит. Найди угол, при котором брусок поедет.",
+    task: () => `Коэффициент трения бруска о доску ${String(SLOPES[state.p.s8][0]).replace(".", ",")}. При каком угле наклона брусок начнёт скользить? Наклоняй телефон влево-вправо (или двигай ползунок) и найди этот угол.`,
+    hints: ["Брусок начинает скользить, когда скатывающая сила m·g·sin α становится больше силы трения μ·m·g·cos α. Получается tg α = μ.", `Найди угол, у которого тангенс равен ${String(SLOPES[state.p.s8][0]).replace(".", ",")}: на калькуляторе это arctg (tan⁻¹). Или просто наклоняй, пока брусок не поедет.`],
+    render(box, api) {
+      const [mu, ans] = SLOPES[state.p.s8];
+      const crit = (Math.atan(mu) * 180) / Math.PI;
+      const s = makeCanvas(box, 0.62, 260);
+      const px = 26, py = s.H - 22, len = Math.min(s.W - 50, (py - 20) / Math.sin((60 * Math.PI) / 180));
+      let ang = 0, pos = 0.78, vel = 0;
+      const aIn = slider(box, { label: "Угол наклона", min: 0, max: 60, step: 1, value: 0, unit: "°" });
+      const ro = el("div", { class: "readout" }, "");
+      box.appendChild(ro);
+      const sb = button(box, "Включить датчик наклона", "alt");
+      const draw = () => {
+        s.clear();
+        const { ctx } = s, a = (ang * Math.PI) / 180;
+        ctx.fillStyle = C.line; ctx.fillRect(0, py, s.W, 3);
+        const ex = px + len * Math.cos(a), ey = py - len * Math.sin(a);
+        ctx.strokeStyle = C.text; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.fillStyle = C.dim; ctx.fillRect(ex - 3, ey, 6, py - ey);
+        const bx = px + len * pos * Math.cos(a), by = py - len * pos * Math.sin(a);
+        ctx.save(); ctx.translate(bx, by); ctx.rotate(-a);
+        ctx.fillStyle = vel > 0 ? C.danger : C.warn; ctx.fillRect(-18, -24, 36, 21);
+        ctx.restore();
+        ctx.strokeStyle = C.warn; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(px, py, 40, -a, 0); ctx.stroke();
+        text(ctx, Math.round(ang) + "°", px + 46, py - 6, C.warn);
+      };
+      let running = true;
+      animate((t, dt) => {
+        if (!running) return false;
+        if (ang > crit) {
+          const a = (ang * Math.PI) / 180;
+          vel += Math.max(0.25, 1.5 * (Math.sin(a) - mu * Math.cos(a))) * dt;
+          pos = Math.max(0.1, pos - vel * dt);
+          if (pos === 0.1) vel = 0;
+        } else vel = 0;
+        if (ang < 3 && pos < 0.78) pos = 0.78;
+        draw();
+        ro.textContent = `угол: ${Math.round(ang)}° · ` + (ang > crit ? (pos > 0.1 ? "брусок скользит!" : "брусок съехал (опусти доску, чтобы вернуть)") : "брусок держится");
+      });
+      onLeave(() => { running = false; });
+      aIn.addEventListener("input", () => { ang = +aIn.value; });
+      const onTilt = (e) => {
+        const portrait = !screen.orientation || Math.abs(screen.orientation.angle) % 180 === 0;
+        const raw = portrait ? e.gamma : e.beta;
+        if (raw == null) return;
+        ang = Math.max(0, Math.min(60, Math.abs(raw)));
+        aIn.value = Math.round(ang); aIn.dispatchEvent(new Event("input"));
+        got = true;
+      };
+      let got = false;
+      sb.onclick = async () => {
+        try {
+          if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+            const r = await DeviceOrientationEvent.requestPermission();
+            if (r !== "granted") throw new Error("denied");
+          }
+          window.addEventListener("deviceorientation", onTilt);
+          onLeave(() => window.removeEventListener("deviceorientation", onTilt));
+          sb.textContent = "Датчик включён: наклоняй телефон";
+          sb.disabled = true;
+          setTimeout(() => { if (!got) { sb.textContent = "Датчик не отвечает: используй ползунок"; } }, 1500);
+        } catch (e) { sb.textContent = "Нет доступа к датчику: используй ползунок"; sb.disabled = true; }
+      };
+      answerForm(box, api, { placeholder: "Угол", unit: "°", check: (x) => Math.abs(x - ans) <= 1.5 });
+    },
+  },
+  // 9 ----------------------------------------------------------
+  {
+    title: "Качели",
+    story: "Последний модуль механики — равновесие. В игре качели всегда перевешивают в одну сторону.",
+    task: () => { const [m1, d1, m2] = SEESAW[state.p.s9]; return `Слева сидит ${m1} кг на расстоянии ${String(d1).replace(".", ",")} м от опоры. Куда поставить груз ${m2} кг справа, чтобы качели были в равновесии?`; },
+    hints: ["Качели в равновесии, когда моменты сил равны: масса × расстояние до опоры слева = масса × расстояние справа.", "m1·d1 = m2·d2, значит d2 = m1·d1 / m2."],
+    render(box, api) {
+      const [m1, d1, m2, ans] = SEESAW[state.p.s9];
+      const s = makeCanvas(box, 0.5, 220);
+      const cx = s.W / 2, cy = s.H - 50, half = s.W / 2 - 22, ppm = half / 4.5;
+      let ang = 0;
+      const dIn = slider(box, { label: `Груз ${m2} кг справа на расстоянии`, min: 0.5, max: 4.5, step: 0.5, value: 1, unit: "м" });
+      const draw = () => {
+        s.clear();
+        const { ctx } = s;
+        ctx.fillStyle = C.line; ctx.fillRect(0, s.H - 18, s.W, 3);
+        ctx.fillStyle = C.dim; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx - 18, s.H - 18); ctx.lineTo(cx + 18, s.H - 18); ctx.fill();
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
+        ctx.fillStyle = C.text; ctx.fillRect(-half, -4, half * 2, 6);
+        for (let m = -4; m <= 4; m++) if (m) { ctx.fillStyle = C.grid; ctx.fillRect(m * ppm, 2, 1, 6); }
+        const r1 = 10 + m1 / 5, x2 = +dIn.value * ppm;
+        ctx.fillStyle = C.acc; ctx.beginPath(); ctx.arc(-d1 * ppm, -4 - r1, r1, 0, 7); ctx.fill();
+        text(ctx, m1 + " кг", -d1 * ppm, -4 - 2 * r1 - 6, C.acc, "center");
+        const w = 16 + m2 / 2;
+        ctx.fillStyle = C.warn; ctx.fillRect(x2 - w / 2, -4 - w, w, w);
+        text(ctx, m2 + " кг", x2, -4 - w - 6, C.warn, "center");
+        ctx.restore();
+      };
+      draw();
+      dIn.addEventListener("input", () => { stopAnim(); ang = 0; draw(); });
+      const b = button(box, "Отпустить качели");
+      b.onclick = () => {
+        const d2 = +dIn.value, tau = m2 * d2 - m1 * d1, target = tau === 0 ? 0 : Math.sign(tau) * 0.2;
+        b.disabled = dIn.disabled = true;
+        animate((t) => {
+          const k = Math.min(1, t / 0.8);
+          ang = target * (1 - Math.pow(1 - k, 3));
+          draw();
+          if (k >= 1) {
+            b.disabled = dIn.disabled = false;
+            if (tau === 0) api.success(`Равновесие: ${m1}·${String(d1).replace(".", ",")} = ${m2}·${String(d2).replace(".", ",")}.`);
+            else api.fail(`Перевешивает ${tau > 0 ? "правая" : "левая"} сторона.`);
+            return false;
+          }
+        });
+      };
+    },
+  },
+  // 10 ---------------------------------------------------------
+  {
+    title: "Физика + код",
+    story: "Движок починен! Осталось понять, как он считает падение. Вот кусок его кода: он моделирует камень, который падает 3 секунды.",
+    task: () => "Что выведет эта программа?",
+    hints: ["Цикл выполнится 3 раза. Каждый раз скорость увеличивается на 10, а к высоте прибавляется текущая скорость.", "Шаг 1: v = 10, h = 10. Шаг 2: v = 20, h = 30. Продолжи сам."],
+    render(box, api) {
+      box.appendChild(el("pre", {}, `v = <span class="num">0</span>   <span class="cm"># скорость, м/с</span>
+h = <span class="num">0</span>   <span class="cm"># пройденный путь, м</span>
+<span class="kw">for</span> t <span class="kw">in</span> <span class="fn">range</span>(<span class="num">3</span>):
+    v = v + <span class="num">10</span>
+    h = h + v
+<span class="fn">print</span>(h)`));
+      answerForm(box, api, {
+        placeholder: "Результат", unit: "м",
+        check: (x) => x === 60 ? true : x === 45 ? "По формуле h = g·t²/2 действительно 45. Но вопрос — что выведет программа. Пройди цикл по шагам." : false,
+      });
+    },
+    after: "Программа выдала 60 м, а по формуле h = g·t²/2 = 45 м. Почему? Программа считает шагами по 1 секунде и всю секунду двигает камень с конечной скоростью. Чем мельче шаг, тем точнее. Так работают физические движки во всех играх: они считают движение маленькими шагами, по 60 раз в секунду.",
+  },
+];
+
+// ===================== экраны =====================
+const screenEl = $("screen");
+
+function renderProgress() {
+  const p = $("progress");
+  p.innerHTML = "";
+  for (let i = 0; i < TOTAL; i++) {
+    const s = document.createElement("span");
+    if (i < state.level) s.className = "done";
+    else if (i === state.level && state.start && !state.end) s.className = "now";
+    p.appendChild(s);
+  }
+  $("who").textContent = state.name || "—";
+  $("hints").textContent = state.hints;
+}
+function fmtTime(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+}
+setInterval(() => { if (state.start) $("timer").textContent = fmtTime((state.end || Date.now()) - state.start); }, 500);
+
+function leave() { stopAnim(); cleanups.forEach((f) => f()); cleanups = []; }
+
+function showStart() {
+  leave();
+  screenEl.innerHTML = `
+    <div class="tag">входящее задание</div>
+    <h1>Почини физический движок</h1>
+    <p>Игровая студия NEXUS делает игру, но её физический движок сломался: машины едут не с той скоростью, ящики скользят как по льду, качели перевешивают.</p>
+    <p class="dim">Тебя наняли тестировщиком. Впереди 10 модулей механики. В каждом нужно провести опыт или посчитать — и найти правильное значение.</p>
+    <div class="task">Понадобятся формулы механики и калькулятор в телефоне. g = 10 м/с².</div>
+    <form id="startForm" autocomplete="off">
+      <div class="ans"><input type="text" id="nameIn" maxlength="24" placeholder="Твоё имя или позывной" aria-label="Имя" required></div>
+      <button type="submit">Начать</button>
+    </form>`;
+  $("startForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $("nameIn").value.trim();
+    if (!name) return;
+    state = blank();
+    state.name = name; state.start = Date.now();
+    save();
+    showLevel();
+  });
+}
+
+function showLevel() {
+  leave();
+  const L = LEVELS[state.level];
+  screenEl.innerHTML = `
+    <div class="tag">модуль ${state.level + 1} из ${TOTAL}</div>
+    <h2>${L.title}</h2>
+    <p class="dim">${L.story}</p>
+    <div class="task">${L.task()}</div>
+    <div id="lvl"></div>
+    <div class="msg" id="msg" role="status"></div>
+    <div id="after"></div>
+    <div class="row" id="hintRow"><button class="ghost" id="hintBtn" type="button">Подсказка</button></div>
+    <div id="hintBox"></div>`;
+  $("hintBtn").addEventListener("click", nextHint);
+  renderHints();
+  renderProgress();
+  L.render($("lvl"), { success, fail });
+}
+
+function renderHints() {
+  const L = LEVELS[state.level];
+  const shown = state.hinted[state.level] || 0;
+  $("hintBox").innerHTML = shown ? `<div class="hint">${L.hints.slice(0, shown).map((h) => `<p>${h}</p>`).join("")}</div>` : "";
+  const btn = $("hintBtn");
+  if (shown >= L.hints.length) btn.style.display = "none";
+  else btn.textContent = shown ? "Ещё подсказка" : "Подсказка";
+}
+function nextHint() {
+  const shown = state.hinted[state.level] || 0;
+  if (shown >= LEVELS[state.level].hints.length) return;
+  state.hinted[state.level] = shown + 1;
+  state.hints++;
+  save(); renderHints(); renderProgress();
+}
+
+function fail(t) {
+  const m = $("msg");
+  m.className = "msg bad"; m.textContent = t;
+  screenEl.classList.remove("shake"); void screenEl.offsetWidth; screenEl.classList.add("shake");
+}
+
+function success(extra) {
+  const L = LEVELS[state.level];
+  const m = $("msg");
+  m.className = "msg ok"; m.textContent = "Модуль откалиброван ✓";
+  $("lvl").querySelectorAll("button, input").forEach((e) => (e.disabled = true));
+  $("hintRow").style.display = "none";
+  const note = extra || L.after;
+  const box = $("after");
+  if (note) box.appendChild(el("div", { class: "note" }, note));
+  state.level++;
+  if (state.level >= TOTAL) state.end = Date.now();
+  save(); renderProgress();
+  const b = el("button", { type: "button" }, state.level >= TOTAL ? "К результатам" : "Дальше");
+  const row = el("div", { class: "row" });
+  row.appendChild(b); box.appendChild(row);
+  b.addEventListener("click", () => (state.level >= TOTAL ? showWin() : showLevel()));
+  b.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function showWin() {
+  leave();
+  const rank = state.hints === 0 ? "Главный физик студии" : state.hints <= 4 ? "Инженер движка" : state.hints <= 10 ? "Тестировщик" : "Стажёр";
+  const code = "PH-" + (Math.abs((state.name + state.end).split("").reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7))).toString(36).toUpperCase().slice(0, 6);
+  screenEl.innerHTML = `
+    <div class="tag">миссия выполнена</div>
+    <h1>Движок починен</h1>
+    <p>Агент <b id="winName"></b>, все 10 модулей механики работают.</p>
+    <div class="result">
+      <div><small>время</small><b>${fmtTime(state.end - state.start)}</b></div>
+      <div><small>подсказки</small><b>${state.hints}</b></div>
+      <div><small>звание</small><b style="font-size:15px">${rank}</b></div>
+      <div><small>код отчёта</small><b>${code}</b></div>
+    </div>
+    <p class="dim">Ты проверил: скорость и среднюю скорость, свободное падение, бросок под углом, второй закон Ньютона, закон сохранения импульса и энергии, трение на наклонной плоскости и правило рычага. А ещё увидел, как физику считают в коде.</p>
+    <p>Покажи этот экран преподавателю.</p>`;
+  $("winName").textContent = state.name;
+}
+
+let armed = null;
+$("reset").addEventListener("click", () => {
+  const b = $("reset");
+  if (!armed) {
+    b.textContent = "точно? нажми ещё раз"; b.classList.add("armed");
+    armed = setTimeout(() => { armed = null; b.textContent = "начать заново"; b.classList.remove("armed"); }, 4000);
+    return;
+  }
+  clearTimeout(armed); armed = null; b.textContent = "начать заново"; b.classList.remove("armed");
+  store.del(); state = blank(); $("timer").textContent = "00:00";
+  renderProgress(); showStart();
+});
+
+renderProgress();
+if (!state.start) showStart();
+else if (state.level >= TOTAL) showWin();
+else showLevel();
+</script>
+</body>
+</html>
