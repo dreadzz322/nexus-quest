@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEXUS: охота за кодами</title>
+<style>
+  :root {
+    --bg: #070b08;
+    --panel: #0d1510;
+    --line: #1d3324;
+    --text: #c8f5d2;
+    --dim: #7fa98a;
+    --accent: #39ff7a;
+    --warn: #ffcc4d;
+    --danger: #ff5c6c;
+    --mono: "Cascadia Code", "Consolas", "JetBrains Mono", "Roboto Mono", "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--mono);
+    font-size: 16px; line-height: 1.55; min-height: 100vh;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(57,255,122,.03) 0 1px, transparent 1px 3px);
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 16px 16px 40px; }
+  header { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+  .logo { color: var(--accent); font-weight: 700; letter-spacing: .12em; }
+  .logo small { color: var(--dim); font-weight: 400; letter-spacing: .02em; }
+  .stats { display: flex; gap: 14px; color: var(--dim); font-size: 14px; }
+  .stats b { color: var(--text); }
+  .progress { display: flex; gap: 4px; margin-bottom: 16px; }
+  .progress span { flex: 1; height: 6px; background: var(--line); border-radius: 2px; }
+  .progress span.done { background: var(--accent); box-shadow: 0 0 8px rgba(57,255,122,.5); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px; }
+  .tag { color: var(--warn); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; }
+  h1, h2 { margin: 4px 0 14px; line-height: 1.25; color: var(--accent); }
+  h1 { font-size: 26px; } h2 { font-size: 22px; }
+  p { margin: 0 0 12px; }
+  .dim { color: var(--dim); }
+  .task {
+    white-space: pre-wrap; background: #040705; border: 1px solid var(--line); border-radius: 6px;
+    padding: 14px 16px; margin: 0 0 16px; font-size: 16px; overflow-x: auto;
+  }
+  .where {
+    border: 2px solid var(--accent); border-radius: 8px; padding: 14px 16px; margin: 14px 0;
+    font-size: 19px; color: var(--accent); background: rgba(57,255,122,.06);
+  }
+  .where small { display: block; color: var(--dim); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
+  form { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+  input[type=text] {
+    flex: 1 1 200px; min-width: 0; background: #040705; color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; padding: 14px; font: inherit; font-size: 17px; outline: none;
+  }
+  input[type=text]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(57,255,122,.15); }
+  button {
+    font: inherit; cursor: pointer; border-radius: 6px; padding: 14px 18px;
+    border: 1px solid var(--accent); background: var(--accent); color: #031006; font-weight: 700;
+  }
+  button.ghost { background: transparent; color: var(--dim); border-color: var(--line); font-weight: 400; }
+  button.ghost.armed { color: var(--danger); border-color: var(--danger); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .msg { min-height: 1.6em; margin-top: 12px; font-weight: 700; }
+  .msg.bad { color: var(--danger); }
+  .hint { margin-top: 12px; padding: 12px 14px; border: 1px dashed var(--warn); border-radius: 6px; color: var(--warn); }
+  .warnbox { border: 1px solid var(--danger); color: var(--danger); border-radius: 6px; padding: 12px 14px; margin-bottom: 12px; }
+  .shake { animation: shake .35s; }
+  @keyframes shake { 20%,60% { transform: translateX(-6px); } 40%,80% { transform: translateX(6px); } }
+  .result { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 16px 0; }
+  .result div { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+  .result small { display: block; color: var(--dim); font-size: 13px; }
+  .result b { font-size: 20px; color: var(--accent); word-break: break-all; }
+  footer { margin-top: 24px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--dim); font-size: 13px; }
+  footer button { padding: 6px 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">NEXUS<small> // охота за кодами</small></div>
+    <div class="stats">
+      <span>команда: <b id="team">—</b></span>
+      <span>время: <b id="timer">00:00</b></span>
+    </div>
+  </header>
+  <div class="progress" id="progress"></div>
+  <main class="card" id="screen"></main>
+  <footer>
+    <span>Один телефон на команду. Сканируйте всё одним и тем же телефоном.</span>
+    <button class="ghost" id="reset" type="button">начать заново</button>
+  </footer>
+</div>
+
+<script>
+// ===== общие функции (такие же в генераторе) =====
+const hash = (str, seed = 7) => {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0, ch; i < str.length; i++) {
+    ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+};
+const normalize = (s) => String(s).trim().toLowerCase().replace(/ё/g, "е").replace(/[\s_.,!-]+/g, "");
+const keystream = (key, len) => {
+  const out = new Uint8Array(len);
+  for (let i = 0; i < len; i += 4) {
+    const v = hash(key + "#" + i / 4);
+    for (let j = 0; j < 4 && i + j < len; j++) out[i + j] = (v >>> (8 * j)) & 255;
+  }
+  return out;
+};
+const fromB64url = (s) => {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+};
+// Подсказка о следующей точке зашифрована правильным ответом: без ответа её не прочитать.
+const decrypt = (cipher, key) => {
+  try {
+    const bytes = fromB64url(cipher);
+    const ks = keystream(key, bytes.length);
+    const plain = new TextDecoder().decode(bytes.map((b, i) => b ^ ks[i]));
+    return plain.startsWith("NX:") ? plain.slice(3) : null;
+  } catch (e) { return null; }
+};
+
+// ===== состояние =====
+const SAVE = "nexus_hunt_v1";
+const $ = (id) => document.getElementById(id);
+const store = {
+  get() { try { return JSON.parse(localStorage.getItem(SAVE)); } catch (e) { return null; } },
+  set(v) { try { localStorage.setItem(SAVE, JSON.stringify(v)); } catch (e) {} },
+  del() { try { localStorage.removeItem(SAVE); } catch (e) {} },
+};
+let state = store.get();
+const save = () => store.set(state);
+
+let point = null; // данные точки из QR-кода
+try {
+  const raw = location.hash.slice(1);
+  if (raw) {
+    const p = JSON.parse(new TextDecoder().decode(fromB64url(raw)));
+    if (p && p.g && p.i && p.n && p.q && Array.isArray(p.c)) point = p;
+  }
+} catch (e) { point = "broken"; }
+
+const screen = $("screen");
+
+function el(tag, attrs = {}, text) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function fmt(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+}
+function tick() {
+  if (state && state.start) $("timer").textContent = fmt((state.end || Date.now()) - state.start);
+}
+setInterval(tick, 500);
+
+function renderTop() {
+  $("team").textContent = state ? state.team : "—";
+  const p = $("progress");
+  p.innerHTML = "";
+  if (!state) return;
+  for (let i = 0; i < state.n; i++) {
+    const s = document.createElement("span");
+    if (i < state.solved.length) s.className = "done";
+    p.appendChild(s);
+  }
+  tick();
+}
+
+function whereBox(text, label = "следующая точка") {
+  const box = el("div", { class: "where" });
+  box.appendChild(el("small", {}, label));
+  box.appendChild(document.createTextNode(text));
+  return box;
+}
+
+// ===== экраны =====
+function showIntro() {
+  screen.innerHTML = `
+    <div class="tag">охота за кодами</div>
+    <h1>Найди и отсканируй QR-код</h1>
+    <p>QR-коды спрятаны на точках по кабинету. Каждая точка — задача. Решите её, и система скажет, где искать следующую.</p>
+    <p class="dim">Откройте камеру телефона и наведите её на QR-код точки, указанной в вашей стартовой карточке.</p>`;
+}
+
+function showBroken() {
+  screen.innerHTML = `
+    <div class="tag">ошибка</div>
+    <h2>QR-код не прочитался</h2>
+    <p>Похоже, ссылка обрезалась. Отсканируйте код ещё раз, поднеся телефон поближе.</p>`;
+}
+
+function showWaiting() {
+  screen.innerHTML = `<div class="tag">в пути</div><h2>Ищите следующую точку</h2>`;
+  screen.appendChild(whereBox(state.nextHint || "—"));
+  screen.appendChild(el("p", { class: "dim" }, "Найдите там QR-код и отсканируйте его камерой."));
+}
+
+function showRegister() {
+  screen.innerHTML = `
+    <div class="tag">новая игра</div>
+    <h1>Добро пожаловать, агенты</h1>
+    <p>Вы нашли первую точку. Придумайте название команды — оно попадёт в итоговый отчёт.</p>
+    <p class="dim">Точек в игре: ${point.n}. Время пойдёт, как только нажмёте «Старт».</p>
+    <form id="regForm" autocomplete="off">
+      <input type="text" id="teamIn" maxlength="24" placeholder="Название команды" aria-label="Название команды" required>
+      <button type="submit">Старт</button>
+    </form>`;
+  $("regForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const team = $("teamIn").value.trim();
+    if (!team) return;
+    state = { g: point.g, n: point.n, team, start: Date.now(), end: 0, expected: point.i, solved: [], nextHint: "", wrong: 0, hints: 0, hinted: [] };
+    save();
+    route();
+  });
+}
+
+function showOtherGame() {
+  screen.innerHTML = `
+    <div class="tag">другая игра</div>
+    <h2>Этот QR-код из новой игры</h2>
+    <p>На телефоне сохранён прогресс прошлой игры (команда «<span id="oldTeam"></span>»). Начать новую?</p>
+    <div class="row"><button id="newGame" type="button">Начать новую игру</button></div>`;
+  $("oldTeam").textContent = state.team;
+  $("newGame").addEventListener("click", () => { state = null; store.del(); route(); });
+}
+
+function showSolvedAlready() {
+  screen.innerHTML = `<div class="tag">точка ${point.i}</div><h2>Эту точку вы уже прошли ✓</h2>`;
+  screen.appendChild(whereBox(state.nextHint || "—"));
+}
+
+function showWrongPoint() {
+  screen.innerHTML = `
+    <div class="tag">не та точка</div>
+    <h2>Сюда пока рано</h2>
+    <p>Это чужая точка в вашем маршруте. Оставьте её другим командам.</p>`;
+  if (state.nextHint) screen.appendChild(whereBox(state.nextHint, "ваша следующая точка"));
+  else screen.appendChild(el("p", { class: "dim" }, "Ваша первая точка указана в стартовой карточке."));
+}
+
+function showPoint() {
+  const hinted = state.hinted.includes(point.i);
+  screen.innerHTML = `
+    <div class="tag">точка ${state.solved.length + 1} из ${state.n}</div>
+    <h2>Задание</h2>
+    <div class="task" id="taskText"></div>
+    <form id="ansForm" autocomplete="off">
+      <input type="text" id="ansIn" placeholder="Ответ" aria-label="Ответ" spellcheck="false" autocapitalize="off">
+      <button type="submit">Проверить</button>
+    </form>
+    <div class="row" id="hintRow"></div>
+    <div id="hintBox"></div>
+    <div class="msg" id="msg" role="status"></div>`;
+  $("taskText").textContent = point.q;
+  if (point.h) {
+    const showHint = () => {
+      $("hintRow").innerHTML = "";
+      const h = el("div", { class: "hint" });
+      h.textContent = "💡 " + point.h;
+      $("hintBox").appendChild(h);
+    };
+    if (hinted) showHint();
+    else {
+      const b = el("button", { class: "ghost", type: "button" }, "Подсказка");
+      b.addEventListener("click", () => {
+        state.hints++;
+        state.hinted.push(point.i);
+        save();
+        showHint();
+      });
+      $("hintRow").appendChild(b);
+    }
+  }
+  $("ansForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = normalize($("ansIn").value);
+    if (!v) return;
+    let next = null;
+    for (const c of point.c) {
+      next = decrypt(c, v + "|" + point.g + "|" + point.i);
+      if (next !== null) break;
+    }
+    if (next === null) {
+      state.wrong++;
+      save();
+      const m = $("msg");
+      m.className = "msg bad";
+      m.textContent = "Неверно. Попробуйте ещё раз.";
+      screen.classList.remove("shake"); void screen.offsetWidth; screen.classList.add("shake");
+      return;
+    }
+    state.solved.push(point.i);
+    state.expected = (point.i % state.n) + 1;
+    state.nextHint = next;
+    if (state.solved.length >= state.n) state.end = Date.now();
+    save();
+    route();
+  });
+}
+
+function showSuccess() {
+  screen.innerHTML = `
+    <div class="tag">точка пройдена ✓</div>
+    <h2>Верно!</h2>
+    <p>Осталось точек: ${state.n - state.solved.length}.</p>`;
+  screen.appendChild(whereBox(state.nextHint));
+  screen.appendChild(el("p", { class: "dim" }, "Найдите там QR-код и отсканируйте его камерой."));
+}
+
+function showFinish() {
+  const code = "NX-" + hash(state.team + "|" + state.end + "|" + state.wrong).toString(36).toUpperCase().slice(0, 6);
+  screen.innerHTML = `
+    <div class="tag">миссия выполнена</div>
+    <h1>Все точки найдены 🎉</h1>
+    <p>Команда «<b id="finTeam"></b>» прошла весь маршрут.</p>
+    <div class="result">
+      <div><small>время</small><b>${fmt(state.end - state.start)}</b></div>
+      <div><small>ошибки</small><b>${state.wrong}</b></div>
+      <div><small>подсказки</small><b>${state.hints}</b></div>
+      <div><small>код отчёта</small><b>${code}</b></div>
+    </div>
+    <p class="dim">Бегом к преподавателю и покажите этот экран!</p>`;
+  $("finTeam").textContent = state.team;
+}
+
+let justSolved = false;
+function route() {
+  renderTop();
+  if (point === "broken") return showBroken();
+  if (!point) {
+    if (state && state.end) return showFinish();
+    if (state && state.nextHint) return showWaiting();
+    return showIntro();
+  }
+  if (state && state.g !== point.g) return showOtherGame();
+  if (!state) return showRegister();
+  if (state.end) return showFinish();
+  if (state.solved.includes(point.i)) return justSolved ? showSuccess() : showSolvedAlready();
+  if (point.i !== state.expected) return showWrongPoint();
+  justSolved = true;
+  return showPoint();
+}
+
+window.addEventListener("hashchange", () => location.reload());
+
+let armed = null;
+$("reset").addEventListener("click", () => {
+  const b = $("reset");
+  if (!armed) {
+    b.textContent = "точно? весь прогресс пропадёт";
+    b.classList.add("armed");
+    armed = setTimeout(() => { armed = null; b.textContent = "начать заново"; b.classList.remove("armed"); }, 4000);
+    return;
+  }
+  clearTimeout(armed); armed = null;
+  b.textContent = "начать заново"; b.classList.remove("armed");
+  state = null; store.del(); justSolved = false;
+  $("timer").textContent = "00:00";
+  route();
+});
+
+route();
+</script>
+</body>
+</html>
